@@ -1,0 +1,127 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>持股風險評價｜台股市場儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#0f1419;color:#e6e6e6}
+header{padding:12px 16px;border-bottom:1px solid #2a2f36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:18px;margin:0}a{color:#58a6ff}
+section{background:#161b22;margin:12px;border-radius:8px;padding:10px}h2{font-size:16px;margin:2px 0 8px}
+input,select{font-size:15px;padding:6px 8px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e6e6e6}
+button{background:#21262d;color:#ddd;border:1px solid #30363d;border-radius:6px;padding:6px 12px;margin:2px;font-size:14px}button.pri{background:#1f6feb}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 4px;border-bottom:1px solid #22272e;text-align:right;white-space:nowrap}td:first-child,th:first-child{text-align:left}
+th{color:#8b949e;font-weight:normal}.scroll{overflow-x:auto}.sum{font-size:14px;line-height:1.7}.muted{color:#8b949e;font-size:12px}
+.privacy{background:#0d2a17;color:#7ee2a8;border-radius:8px;padding:8px 10px;font-size:13px;margin:12px}.ch{width:100%;height:340px}
+</style></head><body>
+<header><h1>🧺 持股風險評價</h1><a href="./">大盤</a><a href="stock.html">個股健檢</a></header>
+<div class="privacy">🔒 持股只存在你這台裝置的瀏覽器（localStorage），所有計算都在瀏覽器內完成，不會上傳到任何伺服器。換裝置請用「匯出／匯入」。</div>
+<section><h2>輸入持股</h2>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+<input id="code" list="dl" placeholder="代號/名稱" style="width:150px"><datalist id="dl"></datalist>
+<input id="qty" type="number" inputmode="decimal" placeholder="數量" style="width:110px">
+<select id="unit"><option value="sh">股</option><option value="lot">張</option><option value="amt">金額(元)</option></select>
+<input id="cost" type="number" inputmode="decimal" placeholder="成本價(選填)" style="width:120px">
+<button class="pri" id="add">加入</button></div>
+<div class="scroll"><table id="hold" style="margin-top:8px"></table></div>
+<div style="margin-top:8px"><button class="pri" id="run">計算風險</button><button id="exp">匯出</button><button id="impb">匯入</button><input type="file" id="imp" accept=".json" style="display:none"><button id="clr">清除全部</button></div>
+</section>
+<div id="out"></div>
+<p class="muted" style="margin:12px">⚠️ 僅供資訊參考，不是投資建議。以目前持股比例回推歷史（價格為未還原收盤價，除權息日會被當成下跌，波動與回撤略偏保守）。VaR 為歷史模擬法；壓力測試以 β 推估，並在資料涵蓋時以實際歷史重播。</p>
+<script>
+const K='twmd_portfolio_v1',$=id=>document.getElementById(id),J=u=>fetch(u).then(r=>r.ok?r.json():null).catch(()=>null);
+const f=(v,d=2)=>v==null||!isFinite(v)?'-':(+v).toLocaleString('zh-TW',{maximumFractionDigits:d});
+const pc=(v,d=1)=>v==null||!isFinite(v)?'-':(v*100).toFixed(d)+'%';
+const OK='✅',WN='⚠️',NO='❌';
+let H=JSON.parse(localStorage.getItem(K)||'[]'),LIST=[],CAL=[],TX=null,charts=[];
+const save=()=>localStorage.setItem(K,JSON.stringify(H));
+function nameOf(c){const a=LIST.find(x=>x[0]===c);return a?a[1]:''}
+function draw(){$('hold').innerHTML='<tr><th>代號</th><th>數量</th><th>成本</th><th></th></tr>'+H.map((h,i)=>`<tr><td>${h.code} ${nameOf(h.code)}</td><td>${f(h.qty,0)} ${{sh:'股',lot:'張',amt:'元'}[h.unit]}</td><td>${h.cost?f(h.cost):'-'}</td><td><button data-i="${i}">刪</button></td></tr>`).join('')}
+$('hold').onclick=e=>{if(e.target.dataset.i!==undefined){H.splice(+e.target.dataset.i,1);save();draw()}};
+$('add').onclick=()=>{const s=$('code').value.trim().split(/\s+/)[0];const hit=LIST.find(a=>a[0]===s)||LIST.find(a=>a[1]===s)||LIST.find(a=>a[1].includes(s));
+ const q=+$('qty').value;if(!hit||!(q>0)){alert('請輸入有效代號與數量');return}
+ H.push({code:hit[0],qty:q,unit:$('unit').value,cost:+$('cost').value||null});save();draw();$('code').value='';$('qty').value='';$('cost').value=''};
+$('clr').onclick=()=>{if(confirm('清除這台裝置上的全部持股？')){H=[];localStorage.removeItem(K);draw();$('out').innerHTML=''}};
+$('exp').onclick=()=>{const b=new Blob([JSON.stringify(H,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='portfolio.json';a.click()};
+$('impb').onclick=()=>$('imp').click();
+$('imp').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(Array.isArray(d)){H=d.filter(x=>x.code&&x.qty>0);save();draw()}}catch(_){alert('檔案格式錯誤')}};
+// ---- math
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const std=a=>{const m=mean(a);return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1))};
+const cov=(a,b)=>{const ma=mean(a),mb=mean(b);let s=0;for(let i=0;i<a.length;i++)s+=(a[i]-ma)*(b[i]-mb);return s/(a.length-1)};
+const q5=a=>{const s=[...a].sort((x,y)=>x-y);return s[Math.floor(0.05*(s.length-1))]};
+function mdd(r){let v=1,pk=1,m=0;for(const x of r){v*=1+x;pk=Math.max(pk,v);m=Math.min(m,v/pk-1)}return m}
+function worstN(r,n){let w=0;for(let i=0;i+n<=r.length;i++){let v=1;for(let j=i;j<i+n;j++)v*=1+r[j];w=Math.min(w,v-1)}return w}
+function flag(v,warn,bad,hi=true){if(v==null||!isFinite(v))return '';return hi?(v>=bad?NO:v>=warn?WN:OK):(v<=bad?NO:v<=warn?WN:OK)}
+function mk(el,opt){const c=echarts.init(el,'dark');c.setOption(Object.assign({backgroundColor:'transparent'},opt));charts.push(c);return c}
+window.addEventListener('resize',()=>charts.forEach(c=>c.resize()));
+async function run(){
+ if(!H.length){alert('請先輸入持股');return}
+ charts.forEach(c=>c.dispose());charts=[];$('out').innerHTML='<section>計算中…</section>';
+ TX=TX||await J('data/market/taiex.json');const TXM=Object.fromEntries(TX);
+ // 合併同代號
+ const S={};for(const h of H){(S[h.code]=S[h.code]||{code:h.code,items:[]}).items.push(h)}
+ const P=[];
+ for(const s of Object.values(S)){const [h,r,F]=await Promise.all([J(`data/stocks/h/${s.code}.json`),J(`data/stocks/r/${s.code}.json`),J(`data/stocks/f/${s.code}.json`)]);
+  if(!r)continue;const parts=[h,r].filter(Boolean),idx=[].concat(...parts.map(p=>p.i)),c=[].concat(...parts.map(p=>p.c)),v=[].concat(...parts.map(p=>p.v||p.i.map(()=>0)));
+  const px={};idx.forEach((i,k)=>px[CAL[i]]=c[k]);const last=c[c.length-1];
+  let sh=0,cost=0,cq=0;for(const it of s.items){const n=it.unit==='lot'?it.qty*1000:it.unit==='amt'?it.qty/last:it.qty;sh+=n;if(it.cost){cost+=it.cost*n;cq+=n}}
+  const tv=c.slice(-20).map((x,k)=>x*(v.slice(-20)[k]||0)*1000);
+  P.push({code:s.code,name:r.name||nameOf(s.code),ind:(F&&F.industry)||'其他',px,last,sh,val:sh*last,cost:cq?cost/cq:null,avgTV:mean(tv),dates:idx.map(i=>CAL[i])})}
+ if(!P.length){$('out').innerHTML='<section>找不到任何持股資料</section>';return}
+ const tot=P.reduce((a,p)=>a+p.val,0);P.forEach(p=>p.w=p.val/tot);P.sort((a,b)=>b.w-a.w);
+ // 共同交易日（全部持股都有價且大盤有值）
+ const all=CAL.filter(d=>TXM[d]!=null&&P.every(p=>p.px[d]!=null));
+ const R=P.map(p=>all.slice(1).map((d,i)=>p.px[d]/p.px[all[i]]-1)),RM=all.slice(1).map((d,i)=>TXM[d]/TXM[all[i]]-1);
+ const rp=RM.map((_,t)=>P.reduce((a,p,k)=>a+p.w*R[k][t],0));const N=rp.length,win=n=>Math.max(0,N-n);
+ const y1=rp.slice(win(250)),m1=RM.slice(win(250));
+ const vol=std(y1)*Math.sqrt(252),beta=cov(y1,m1)/cov(m1,m1);
+ const sig=R.map(r=>std(r.slice(win(250)))*Math.sqrt(252));
+ const C=R.map(a=>R.map(b=>{const x=a.slice(win(250)),y=b.slice(win(250));return cov(x,y)/(std(x)*std(y))}));
+ const S1=R.map(a=>R.map(b=>cov(a.slice(win(250)),b.slice(win(250)))*252));
+ const varp=P.reduce((s,p,i)=>s+P.reduce((t,q,j)=>t+p.w*q.w*S1[i][j],0),0);
+ const rc=P.map((p,i)=>p.w*P.reduce((t,q,j)=>t+q.w*S1[i][j],0)/varp);
+ const effN=1/P.reduce((a,p)=>a+p.w*p.w,0),dr=P.reduce((a,p,i)=>a+p.w*sig[i],0)/Math.sqrt(varp);
+ const var1=-q5(y1),r21=[];const y3=rp.slice(win(750));for(let i=0;i+21<=y3.length;i++){let v=1;for(let j=i;j<i+21;j++)v*=1+y3[j];r21.push(v-1)}const var21=r21.length?-q5(r21):null;
+ const per=[[250,'1年'],[750,'3年'],[1250,'5年']].map(([n,t])=>({t,n:Math.min(n,N),mdd:mdd(rp.slice(win(n))),wm:worstN(rp.slice(win(n)),21),full:N>=n}));
+ const sec={};P.forEach(p=>sec[p.ind]=(sec[p.ind]||0)+p.w);const secs=Object.entries(sec).sort((a,b)=>b[1]-a[1]);
+ const liq=P.map(p=>({p,ratio:p.val/p.avgTV,days:p.val/(0.1*p.avgTV)}));const maxDays=Math.max(...liq.map(l=>l.days));
+ // 壓力
+ const replay=(a,b)=>{const ds=all.filter(d=>d>=a&&d<=b);if(ds.length<10||ds[0]>a.replace(/-\d\d$/,'-31'))return null;let v=1;for(let i=1;i<ds.length;i++){v*=P.reduce((s,p)=>s+p.w*(p.px[ds[i]]/p.px[ds[i-1]]),0)}return {pf:v-1,ix:TXM[ds[ds.length-1]]/TXM[ds[0]]-1}};
+ const ST=[['2008 金融海嘯','2008-05-19','2008-11-20',-0.58],['2020 新冠崩跌','2020-01-20','2020-03-19',-0.30],['2022 升息空頭','2022-01-05','2022-10-25',-0.32]].map(([t,a,b,dd])=>({t,dd,est:beta*dd,rep:replay(a,b)}));
+ const pnl=P.filter(p=>p.cost).reduce((a,p)=>a+(p.last-p.cost)*p.sh,0);
+ // ---- flags
+ const top=P[0];const items=[
+  ['最大單一持股',`${top.code} ${top.name} ${pc(top.w)}`,flag(top.w,.3,.5)],
+  ['最大產業',`${secs[0][0]} ${pc(secs[0][1])}`,flag(secs[0][1],.5,.7)],
+  ['有效持股檔數（1/Σw²）',f(effN,1)+' 檔',flag(effN,5,3,false)],
+  ['分散比率（Σwσ/σp）',f(dr,2),flag(dr,1.2,1.05,false)],
+  ['年化波動（1年）',pc(vol),flag(vol,.3,.45)],
+  ['β（對加權指數，1年）',f(beta,2),flag(beta,1.3,1.6)],
+  ...per.map(x=>[`最大回撤（${x.t}${x.full?'':'，資料 '+x.n+' 日'}）`,`${pc(x.mdd)}｜最差月 ${pc(x.wm)}`,flag(x.mdd,-.3,-.5,false)]),
+  ['95% VaR 1日',`${pc(var1)}（約 ${f(var1*tot,0)} 元）`,flag(var1,.03,.05)],
+  ['95% VaR 1個月（3年歷史）',`${pc(var21)}（約 ${f(var21*tot,0)} 元）`,flag(var21,.12,.2)],
+  ['最難出清持股（10%量參與）',`${f(maxDays,1)} 天`,flag(maxDays,5,20)],
+  ['最大風險貢獻',(()=>{const i=rc.indexOf(Math.max(...rc));return `${P[i].code} ${pc(rc[i])}（權重 ${pc(P[i].w)}）`})(),flag(Math.max(...rc),.5,.7)]];
+ const cnt=s=>items.filter(x=>x[2]===s).length;
+ let html=`<section><h2>總評</h2><div class="sum">市值 <b>${f(tot,0)}</b> 元・${P.length} 檔${P.some(p=>p.cost)?`・未實現損益 ${f(pnl,0)} 元`:''}<br>${OK}×${cnt(OK)}　${WN}×${cnt(WN)}　${NO}×${cnt(NO)}｜共同歷史 ${all[0]}～${all[all.length-1]}（${N} 日）</div>
+ <table>${items.map(x=>`<tr><td>${x[0]}</td><td>${x[2]} ${x[1]}</td></tr>`).join('')}</table></section>`;
+ html+=`<section><h2>持股明細與風險貢獻</h2><div class="scroll"><table><tr><th>持股</th><th>市值</th><th>權重</th><th>波動</th><th>風險貢獻</th><th>部位/日均值</th><th>出清天數</th>${P.some(p=>p.cost)?'<th>損益</th>':''}</tr>
+ ${P.map((p,i)=>`<tr><td>${p.code} ${p.name}<br><span class="muted">${p.ind}</span></td><td>${f(p.val,0)}</td><td>${pc(p.w)}</td><td>${pc(sig[i],0)}</td><td>${pc(rc[i])}</td><td>${f(liq[i].ratio*100,1)}%</td><td>${flag(liq[i].days,5,20)}${f(liq[i].days,1)}</td>${P.some(q=>q.cost)?`<td>${p.cost?pc(p.last/p.cost-1):'-'}</td>`:''}</tr>`).join('')}</table></div></section>`;
+ html+=`<section><h2>產業集中度</h2><div id="secc" class="ch" style="height:260px"></div></section>`;
+ html+=`<section><h2>相關係數（1年日報酬）</h2><div id="corr" class="ch" style="height:${Math.max(260,40*P.length+80)}px"></div></section>`;
+ html+=`<section><h2>壓力測試</h2><table><tr><th>情境</th><th>大盤跌幅</th><th>β 推估</th><th>歷史重播</th></tr>
+ ${ST.map(s=>`<tr><td>${s.t}</td><td>${pc(s.dd,0)}</td><td>${pc(s.est)}（${f(s.est*tot,0)} 元）</td><td>${s.rep?`${pc(s.rep.pf)}（同期大盤 ${pc(s.rep.ix)}）`:'<span class="muted">資料不足</span>'}</td></tr>`).join('')}</table>
+ <p class="muted">β 推估＝β×大盤跌幅；歷史重播需所有持股在該期間都有價格（個股資料自 2019 年起，2008 無法重播）。</p></section>`;
+ html+=`<section><h2>目前組合的歷史淨值（回推）</h2><div id="nav" class="ch"></div></section>`;
+ $('out').innerHTML=html;
+ mk($('secc'),{tooltip:{},series:[{type:'pie',radius:['35%','65%'],data:secs.map(([k,v])=>({name:k,value:+(v*100).toFixed(1)})),label:{formatter:'{b} {c}%',color:'#ccc'}}]});
+ const lab=P.map(p=>p.code);
+ mk($('corr'),{tooltip:{formatter:p=>`${lab[p.value[1]]}×${lab[p.value[0]]}: ${p.value[2]}`},grid:{left:60,right:20,top:10,bottom:60},xAxis:{type:'category',data:lab},yAxis:{type:'category',data:lab},
+  visualMap:{min:-1,max:1,calculable:true,orient:'horizontal',left:'center',bottom:0,inRange:{color:['#3fb950','#161b22','#e5534b']}},
+  series:[{type:'heatmap',data:C.flatMap((r,i)=>r.map((v,j)=>[j,i,+v.toFixed(2)])),label:{show:P.length<=10,fontSize:10}}]});
+ let v=1,m=1;const nav=[[all[0],1,1]];rp.forEach((x,i)=>{v*=1+x;m*=1+RM[i];nav.push([all[i+1],+v.toFixed(4),+m.toFixed(4)])});
+ mk($('nav'),{tooltip:{trigger:'axis'},legend:{top:0},grid:{left:50,right:12,top:30,bottom:50},xAxis:{type:'time'},yAxis:{scale:true,splitLine:{lineStyle:{color:'#222'}}},
+  dataZoom:[{type:'inside'},{type:'slider',height:16,bottom:4}],series:[{name:'組合',type:'line',showSymbol:false,data:nav.map(a=>[a[0],a[1]])},{name:'加權指數',type:'line',showSymbol:false,data:nav.map(a=>[a[0],a[2]])}]});
+}
+$('run').onclick=run;
+(async()=>{[LIST,CAL]=await Promise.all([J('data/stocks/list.json'),J('data/stocks/cal.json')]);$('dl').innerHTML=LIST.map(a=>`<option value="${a[0]} ${a[1]}">`).join('');draw();if(H.length)run()})();
+</script></body></html>

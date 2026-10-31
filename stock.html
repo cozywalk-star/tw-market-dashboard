@@ -1,0 +1,151 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>個股健檢｜台股市場儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#0f1419;color:#e6e6e6}
+header{padding:12px 16px;border-bottom:1px solid #2a2f36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0}a{color:#58a6ff}
+input{font-size:16px;padding:8px 10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6e6e6;width:min(320px,80vw)}
+.top{background:#161b22;margin:12px;border-radius:8px;padding:12px}.top .nm{font-size:20px;font-weight:700}.top .px{font-size:26px;font-weight:700}
+.up{color:#e5534b}.dn{color:#3fb950}.muted{color:#8b949e;font-size:12px}.warn{background:#3d2e00;color:#f2cc60;border-radius:6px;padding:4px 8px;margin-top:6px;display:inline-block;font-size:13px}
+section{background:#161b22;margin:12px;border-radius:8px;padding:10px}h2{font-size:16px;margin:2px 0 6px}
+.sum{font-size:14px;margin:4px 0 8px;line-height:1.6}
+table{width:100%;border-collapse:collapse;font-size:13px}td{padding:5px 4px;border-bottom:1px solid #22272e;vertical-align:top}td:first-child{color:#8b949e;width:38%}td:last-child{text-align:right;white-space:nowrap}
+.ch{width:100%;height:300px}button{background:#21262d;color:#ddd;border:1px solid #30363d;border-radius:6px;padding:4px 10px;margin:2px;font-size:13px}button.on{background:#1f6feb}
+.note{font-size:12px;color:#8b949e;margin:8px 12px}#msg{color:#e5534b;margin:8px 12px}details summary{cursor:pointer;color:#8b949e;font-size:13px;margin:6px 0}
+</style></head><body>
+<header><h1>🔎 個股健檢</h1><input id="q" list="dl" placeholder="代號或名稱，例如 2330 或 台積電" autocomplete="off"><datalist id="dl"></datalist><a href="./">← 大盤儀表板</a></header>
+<div id="msg"></div>
+<div class="top" id="top"></div>
+<section><h2>📈 技術面</h2><div class="sum" id="s1"></div><table id="t1"></table>
+ <div id="rng" style="margin-top:8px"></div><div id="k" class="ch" style="height:430px"></div></section>
+<section><h2>🧮 籌碼面</h2><div class="sum" id="s2"></div><table id="t2"></table>
+ <details><summary>圖表：法人買賣超・融資融券・外資持股</summary><div id="inst" class="ch"></div><div id="mg" class="ch" style="height:260px"></div></details></section>
+<section><h2>🏭 基本面</h2><div class="sum" id="s3"></div><table id="t3"></table>
+ <details><summary>圖表：月營收・季 EPS/利潤率・股利</summary><div id="rev" class="ch"></div><div id="qq" class="ch"></div><table id="divt"></table></details></section>
+<p class="note">⚠️ 本頁只呈現公開資料與固定門檻的客觀檢核（✅ 符合／⚠️ 留意／❌ 不符），不是買賣建議。資料可能有延遲或缺漏，下單前請自行查證。<br>
+價格為未還原收盤價（2019 起）；法人、外資持股、融券為公開資料續接期間（2026 起）；本益比/淨值比/殖利率歷史區間以收盤價與近四季 EPS、每股淨值、近一年現金股利自行推算。集保大戶比例每週更新，從上線後逐週累積。</p>
+<script>
+let LIST=[],CAL=[],charts=[];
+const $=id=>document.getElementById(id), J=u=>fetch(u).then(r=>r.ok?r.json():null).catch(()=>null);
+const f=(v,d=2)=>v==null||isNaN(v)?'-':(+v).toLocaleString('zh-TW',{maximumFractionDigits:d,minimumFractionDigits:0});
+const sg=(v,d=0,u='')=>v==null||isNaN(v)?'-':(v>0?'+':'')+f(v,d)+u;
+const OK='✅',WN='⚠️',NO='❌';
+function ma(a,n){const o=[];let s=0,k=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];o.push(i>=n-1?s/n:null)}return o}
+function lastNN(a){for(let i=a.length-1;i>=0;i--)if(a[i]!=null)return [a[i],i];return [null,-1]}
+function sumLast(a,n){const v=a.slice(-n).filter(x=>x!=null);return v.length?v.reduce((x,y)=>x+y,0):null}
+function streak(a){let n=0,sgn=0;for(let i=a.length-1;i>=0;i--){const x=a[i];if(x==null)break;const s=Math.sign(x);if(!s)break;if(!sgn)sgn=s;if(s!==sgn)break;n++}return sgn*n}
+function pct(arr,v){const a=arr.filter(x=>x!=null&&isFinite(x)).sort((x,y)=>x-y);if(!a.length||v==null)return null;return 100*a.filter(x=>x<=v).length/a.length}
+function row(t,v,fl){return `<tr><td>${t}</td><td>${fl||''} ${v}</td></tr>`}
+function summary(items){const c={[OK]:0,[WN]:0,[NO]:0};items.forEach(x=>{if(x[2])c[x[2]]++});
+ return `${OK}×${c[OK]}　${WN}×${c[WN]}　${NO}×${c[NO]}｜`+items.filter(x=>x[3]).map(x=>`${x[2]}${x[3]}`).join('、')}
+function mk(id,opt){let c=echarts.getInstanceByDom($(id));if(c)c.dispose();c=echarts.init($(id),'dark');
+ c.setOption(Object.assign({backgroundColor:'transparent',tooltip:{trigger:'axis'},legend:{top:0,textStyle:{fontSize:11}}},opt));charts.push(c);return c}
+window.addEventListener('resize',()=>charts.forEach(c=>c.resize()));
+document.querySelectorAll('details').forEach(d=>d.addEventListener('toggle',()=>charts.forEach(c=>c.resize())));
+const RG=[['3月',66],['6月',130],['1年',250],['3年',750],['全部',0]];
+$('rng').innerHTML=RG.map(([t,n])=>`<button data-n="${n}">${t}</button>`).join('');
+$('rng').onclick=e=>{const n=e.target.dataset.n;if(n===undefined)return;const c=echarts.getInstanceByDom($('k'));const len=c.getOption().xAxis[0].data.length;
+ c.dispatchAction({type:'dataZoom',startValue:+n?Math.max(0,len-n):0,endValue:len-1});document.querySelectorAll('#rng button').forEach(b=>b.classList.toggle('on',b.dataset.n==n))};
+async function load(sid){
+ $('msg').textContent='';charts.forEach(c=>c.dispose());charts=[];
+ const [h,r,F]=await Promise.all([J(`data/stocks/h/${sid}.json`),J(`data/stocks/r/${sid}.json`),J(`data/stocks/f/${sid}.json`)]);
+ if(!r){$('msg').textContent=`找不到 ${sid}（收錄 2026 年仍有交易的上市櫃證券）`;return}
+ const fd=F||{};const keys=['o','h','l','c','v','fi','ti','di','mb','per','pbr','dy','sb','ml','fh'],D={};
+ const parts=[h,r].filter(Boolean);keys.forEach(k=>D[k]=[].concat(...parts.map(p=>p[k]||p.i.map(()=>null))));
+ const x=[].concat(...parts.map(p=>p.i)).map(i=>CAL[i]);const n=x.length-1,C=D.c;
+ const name=r.name||'';document.title=`${sid} ${name}｜個股健檢`;
+ // ---- top card
+ const chg=n>0?(C[n]/C[n-1]-1)*100:0, tv=x.map((_,i)=>C[i]*(D.v[i]||0)*1000), avgTV=sumLast(tv,20)/Math.min(20,tv.length);
+ const cap=fd.shares?C[n]*fd.shares/1e8:null;
+ $('top').innerHTML=`<div class="nm">${sid} ${name} <span class="muted">${fd.industry||''}｜${{twse:'上市',tpex:'上櫃'}[fd.market]||''}</span></div>
+  <div><span class="px ${chg>=0?'up':'dn'}">${f(C[n])}</span> <span class="${chg>=0?'up':'dn'}">${sg(chg,2,'%')}</span> <span class="muted">${x[n]}</span></div>
+  <div class="muted">市值 ${cap?f(cap,0)+' 億':'-'}｜20日均成交值 ${f(avgTV/1e8,2)} 億｜成交量 ${f(D.v[n],0)} 張</div>
+  ${avgTV<1e7?`<div class="warn">⚠️ 流動性低：20日均成交值不到 1,000 萬，進出容易滑價</div>`:''}`;
+ // ---- 技術面
+ const m20=ma(C,20),m60=ma(C,60),m240=ma(C,240);
+ const lr=C.map((v,i)=>i?Math.log(v/C[i-1]):null).slice(-20).filter(v=>v!=null);const mu=lr.reduce((a,b)=>a+b,0)/lr.length;
+ const vol20=Math.sqrt(lr.reduce((a,b)=>a+(b-mu)**2,0)/(lr.length-1)*252)*100;
+ let g=0,l=0;for(let i=n-13;i<=n;i++){if(i<1)continue;const d=C[i]-C[i-1];d>0?g+=d:l-=d}const rsi=l?100-100/(1+g/l):100;
+ const w52=C.slice(-250),hi=Math.max(...D.h.slice(-250).filter(v=>v!=null)),lo=Math.min(...D.l.slice(-250).filter(v=>v!=null));
+ const hi60=Math.max(...C.slice(-60)),dd60=(C[n]/hi60-1)*100,vr=D.v[n]/(sumLast(D.v,20)/20);
+ const pos=(m,t)=>m[n]==null?[t,'資料不足',WN,null]:[t,`${sg((C[n]/m[n]-1)*100,1,'%')}（${f(m[n])}）`,C[n]>=m[n]?OK:NO,C[n]>=m[n]?`站上${t.slice(1,-1)}`:`跌破${t.slice(1,-1)}`];
+ const trend=m240[n]==null?['均線排列','資料不足',WN,null]:(m20[n]>m60[n]&&m60[n]>m240[n])?['均線排列','多頭排列（20>60>240）',OK,'多頭排列']:(m20[n]<m60[n]&&m60[n]<m240[n])?['均線排列','空頭排列（20<60<240）',NO,'空頭排列']:['均線排列','糾結/整理',WN,'均線糾結'];
+ const T=[['股價 vs 月線(MA20)',...pos(m20,'(MA20)').slice(1)],['股價 vs 季線(MA60)',...pos(m60,'(MA60)').slice(1)],['股價 vs 年線(MA240)',...pos(m240,'(MA240)').slice(1)],trend,
+  ['距 52 週高點',`${sg((C[n]/hi-1)*100,1,'%')}（高 ${f(hi)}）`,(C[n]/hi-1)<-0.3?WN:OK,(C[n]/hi-1)<-0.3?'距高點逾30%':null],
+  ['距 52 週低點',`${sg((C[n]/lo-1)*100,1,'%')}（低 ${f(lo)}）`,null,null],
+  ['RSI(14)',f(rsi,1),rsi>75?WN:rsi<25?WN:OK,rsi>75?'RSI過熱':rsi<25?'RSI超賣':null],
+  ['今日量 / 20日均量',f(vr,2)+' 倍',vr>2.5?WN:OK,vr>2.5?'爆量':null],
+  ['20日年化波動',f(vol20,1)+'%',vol20>60?WN:OK,vol20>60?'波動大':null],
+  ['距 60 日高點回檔',sg(dd60,1,'%'),dd60<-20?WN:OK,dd60<-20?'回檔逾20%':null]];
+ $('s1').innerHTML=summary(T);$('t1').innerHTML=T.map(a=>row(a[0],a[1],a[2])).join('');
+ mk('k',{tooltip:{trigger:'axis',axisPointer:{type:'cross'}},grid:[{left:50,right:12,top:28,height:'60%'},{left:50,right:12,top:'76%',bottom:44}],
+  xAxis:[{type:'category',data:x,axisLabel:{show:false}},{type:'category',data:x,gridIndex:1}],
+  yAxis:[{scale:true,splitLine:{lineStyle:{color:'#222'}}},{gridIndex:1,axisLabel:{show:false},splitLine:{show:false}}],
+  dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:Math.max(0,n-250)},{type:'slider',xAxisIndex:[0,1],height:16,bottom:4,startValue:Math.max(0,n-250)}],
+  series:[{name:'K',type:'candlestick',data:x.map((_,i)=>[D.o[i],C[i],D.l[i],D.h[i]]),itemStyle:{color:'#e5534b',color0:'#3fb950',borderColor:'#e5534b',borderColor0:'#3fb950'}},
+   ...[[m20,'MA20'],[m60,'MA60'],[m240,'MA240']].map(([m,t])=>({name:t,type:'line',data:m.map(v=>v&&+v.toFixed(2)),showSymbol:false,lineStyle:{width:1}})),
+   {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,large:true,data:D.v.map((v,i)=>({value:v,itemStyle:{color:C[i]>=D.o[i]?'#e5534b88':'#3fb95088'}}))}]});
+ // ---- 籌碼面
+ const S=[];const has=k=>D[k].some(v=>v!=null);
+ if(has('fi')){[['外資','fi'],['投信','ti'],['自營商','di']].forEach(([t,k])=>{const a=[5,20,60].map(m=>sumLast(D[k],m));
+   S.push([`${t} 買賣超 5/20/60日`,a.map(v=>sg(v)).join(' / ')+' 張',k=='di'?null:(a[1]>0?OK:a[1]<0?NO:null),k=='di'?null:(a[1]>0?`${t}20日買超`:a[1]<0?`${t}20日賣超`:null)])});
+  [['外資','fi'],['投信','ti']].forEach(([t,k])=>{const s=streak(D[k]);S.push([`${t}連續`,s>0?`連買 ${s} 天`:s<0?`連賣 ${-s} 天`:'-',null,null])})}
+ else S.push(['三大法人','尚無個股法人資料（公開資料續接中）',WN,null]);
+ const [mb]=lastNN(D.mb),[ml]=lastNN(D.ml),[sb]=lastNN(D.sb);
+ if(mb!=null){const mbs=D.mb.filter(v=>v!=null),m20c=mbs.length>20?(mb/mbs[mbs.length-21]-1)*100:null,util=ml?mb/ml*100:null;
+  S.push(['融資餘額（20日變化）',`${f(mb,0)} 張（${sg(m20c,1,'%')}）`,m20c>20?WN:null,m20c>20?'融資20日增逾20%':null]);
+  S.push(['融資使用率',util==null?'-':f(util,1)+'%',util>30?WN:util!=null?OK:null,util>30?'融資使用率高':null]);
+  if(sb!=null)S.push(['融券餘額／券資比',`${f(sb,0)} 張／${f(mb?sb/mb*100:null,1)}%`,null,null])}
+ const [fh,fi_]=lastNN(D.fh);if(fh!=null){const prev=D.fh.slice(0,fi_-19).filter(v=>v!=null).pop();const d=prev!=null?fh-prev:null;
+  S.push(['外資持股比例（20日變化）',`${f(fh,2)}%（${sg(d,2,' pt')}）`,d>0?OK:d<0?NO:null,d>0?'外資持股增加':d<0?'外資持股減少':null])}
+ const td=fd.tdcc||[];if(td.length){const L=td[td.length-1],P=td.length>4?td[td.length-5]:null;
+  S.push(['千張大戶持股（集保）',`${f(L[1],2)}%`+(P?`（4週 ${sg(L[1]-P[1],2,' pt')}）`:'')+`<br><span class="muted">400張以上 ${f(L[2],1)}%｜股東 ${f(L[3],0)} 人｜${L[0]}</span>`,P?(L[1]>=P[1]?OK:NO):null,P?(L[1]>=P[1]?'大戶增持':'大戶減持'):null])}
+ $('s2').innerHTML=summary(S);$('t2').innerHTML=S.map(a=>row(a[0],a[1],a[2])).join('');
+ // ---- 基本面
+ const B=[],rv=r.rev||[],RM={};rv.forEach(([ym,v])=>RM[ym]=v);
+ const yoyOf=ym=>{const p=RM[(+ym.slice(0,4)-1)+ym.slice(4)];return p?(RM[ym]/p-1)*100:null};
+ if(rv.length){const L=rv[rv.length-1][0],y=yoyOf(L),mom=rv.length>1?(rv[rv.length-1][1]/rv[rv.length-2][1]-1)*100:null;
+  const y12=rv.slice(-12).map(a=>yoyOf(a[0])).filter(v=>v!=null),pos12=y12.filter(v=>v>0).length;
+  const s3=rv.slice(-3).reduce((a,b)=>a+b[1],0),p3=rv.slice(-3).map(a=>RM[(+a[0].slice(0,4)-1)+a[0].slice(4)]),y3=p3.every(v=>v)?(s3/p3.reduce((a,b)=>a+b,0)-1)*100:null;
+  B.push([`月營收 ${L}`,`${f(rv[rv.length-1][1]/1e8,2)} 億｜YoY ${sg(y,1,'%')}｜MoM ${sg(mom,1,'%')}`,y>0?OK:y<0?NO:null,y>0?'營收年增':y<0?'營收年減':null]);
+  B.push(['近3月累計 YoY',sg(y3,1,'%'),y3>0?OK:y3<0?NO:null,null]);
+  B.push(['近12月 YoY 為正月數',`${pos12} / ${y12.length}`,pos12>=8?OK:pos12<=4?WN:null,null])}
+ const q=fd.q||[];if(q.length){const k=q.length-1,eps4=sumLast(fd.eps,4),eps4p=fd.eps.length>=8?fd.eps.slice(-8,-4).reduce((a,b)=>a+(b||0),0):null;
+  B.push([`近四季 EPS（至 ${q[k].slice(0,7)}）`,`${f(eps4,2)} 元`+(eps4p!=null?`（前四季 ${f(eps4p,2)}）`:''),eps4>0?(eps4p!=null&&eps4<eps4p?WN:OK):NO,eps4<=0?'近四季虧損':(eps4p!=null&&eps4<eps4p?'EPS衰退':null)]);
+  const gm=fd.gm[k],gmp=k>=4?fd.gm[k-4]:null,om=fd.om[k],omp=k>=4?fd.om[k-4]:null;
+  B.push(['毛利率／營益率（vs 去年同季）',`${f(gm,1)}% (${sg(gm-gmp,1,'pt')})／${f(om,1)}% (${sg(om-omp,1,'pt')})`,om!=null&&omp!=null?(om>=omp?OK:WN):null,om!=null&&omp!=null&&om<omp?'營益率下滑':null]);
+  const roe=fd.roe[k];B.push(['ROE（近四季）',f(roe,1)+'%',roe==null?null:roe>=10?OK:roe>0?WN:NO,roe!=null&&roe<10?'ROE偏低':null]);
+  const dr=fd.debt[k];B.push(['負債比',f(dr,1)+'%',dr==null?null:dr>60?WN:OK,dr>60?'負債比高(金融業例外)':null]);
+  const o4=sumLast(fd.ocf,4),n4=sumLast(fd.ni,4),cr=n4>0?o4/n4:null;
+  B.push(['營業現金流／淨利（近四季）',`${f(o4,1)} 億／${f(n4,1)} 億`+(cr!=null?`（${f(cr,2)} 倍）`:''),cr==null?null:cr>=0.8?OK:WN,cr!=null&&cr<0.8?'現金流不及獲利':null])}
+ // 估值歷史：以收盤/近四季EPS、收盤/每股淨值、近一年現金股利 推算
+ if(q.length>=4){const ttm={};q.forEach((d,i)=>{if(i>=3)ttm[d]=fd.eps.slice(i-3,i+1).reduce((a,b)=>a+(b||0),0)});
+  const qd=Object.keys(ttm).sort(),pers=[],i5=x.findIndex(d=>d>=String(+x[n].slice(0,4)-5)+x[n].slice(4));
+  for(let i=Math.max(0,i5);i<=n;i++){const qq=qd.filter(d=>d<=x[i]).pop();if(qq&&ttm[qq]>0)pers.push(C[i]/ttm[qq])}
+  const curPer=ttm[qd[qd.length-1]]>0?C[n]/ttm[qd[qd.length-1]]:null,pp=pct(pers,curPer);
+  B.push(['本益比（近四季 EPS）',curPer?`${f(curPer,1)} 倍｜5年區間 ${f(Math.min(...pers),1)}～${f(Math.max(...pers),1)}（第 ${f(pp,0)} 百分位）`:'虧損，無法計算',pp==null?null:pp>85?WN:OK,pp>85?'本益比在5年高檔':null])}
+ const [pbr]=lastNN(D.pbr),[dy]=lastNN(D.dy);
+ const dv=(fd.div||[]).filter(a=>a[3]&&a[3]<=x[n]&&a[3]>String(+x[n].slice(0,4)-1)+x[n].slice(4)).reduce((s,a)=>s+a[1],0);
+ B.push(['股價淨值比／殖利率',`${f(pbr,2)} 倍／${f(dy!=null?dy:(dv?dv/C[n]*100:null),2)}%`+(dv?`<br><span class="muted">近一年現金股利 ${f(dv,2)} 元</span>`:''),null,null]);
+ $('s3').innerHTML=summary(B);$('t3').innerHTML=B.map(a=>row(a[0],a[1],a[2])).join('');
+ $('divt').innerHTML='<tr><td>股利年度</td><td>現金 / 股票（元）・除息日</td></tr>'+(fd.div||[]).slice(-8).reverse().map(a=>`<tr><td>${a[0]}</td><td>${f(a[1],2)} / ${f(a[2],2)}・${a[3]||'-'}</td></tr>`).join('');
+ // charts in details
+ const line=(id,ser,y)=>mk(id,{grid:{left:55,right:y?50:12,top:28,bottom:44},xAxis:{type:'category',data:x},yAxis:y||{scale:true,splitLine:{lineStyle:{color:'#222'}}},
+  dataZoom:[{type:'inside',startValue:Math.max(0,n-130)},{type:'slider',height:16,bottom:4,startValue:Math.max(0,n-130)}],series:ser});
+ line('inst',[['外資','fi'],['投信','ti'],['自營商','di']].map(([t,k])=>({name:t,type:'bar',stack:'a',data:D[k],large:true})));
+ line('mg',[{name:'融資(張)',type:'line',data:D.mb,showSymbol:false},{name:'融券(張)',type:'line',data:D.sb,showSymbol:false},{name:'外資持股%',type:'line',yAxisIndex:1,data:D.fh,showSymbol:false}],
+  [{scale:true,splitLine:{lineStyle:{color:'#222'}}},{scale:true,splitLine:{show:false}}]);
+ mk('rev',{grid:{left:55,right:50,top:28,bottom:44},xAxis:{type:'category',data:rv.map(a=>a[0])},yAxis:[{scale:true,splitLine:{lineStyle:{color:'#222'}}},{scale:true,splitLine:{show:false}}],
+  dataZoom:[{type:'inside',startValue:Math.max(0,rv.length-36)},{type:'slider',height:16,bottom:4,startValue:Math.max(0,rv.length-36)}],
+  series:[{name:'月營收(億)',type:'bar',data:rv.map(a=>+(a[1]/1e8).toFixed(2))},{name:'YoY%',type:'line',yAxisIndex:1,data:rv.map(a=>{const v=yoyOf(a[0]);return v==null?null:+v.toFixed(1)})}]});
+ mk('qq',{grid:{left:55,right:50,top:28,bottom:30},xAxis:{type:'category',data:q.map(d=>d.slice(0,7))},yAxis:[{scale:true,splitLine:{lineStyle:{color:'#222'}}},{scale:true,splitLine:{show:false}}],
+  series:[{name:'EPS',type:'bar',data:fd.eps||[]},{name:'毛利率%',type:'line',yAxisIndex:1,data:fd.gm||[]},{name:'營益率%',type:'line',yAxisIndex:1,data:fd.om||[]},{name:'ROE%',type:'line',yAxisIndex:1,data:fd.roe||[]}]});
+}
+function pick(v){const s=(v||'').trim().split(/\s+/)[0];const hit=LIST.find(a=>a[0]===s)||LIST.find(a=>a[1]===s)||LIST.find(a=>a[1].includes(s));if(hit){location.hash=hit[0];$('q').value=''}else if(s)$('msg').textContent='找不到：'+s}
+$('q').addEventListener('change',e=>pick(e.target.value));$('q').addEventListener('keydown',e=>{if(e.key==='Enter')pick(e.target.value)});
+window.addEventListener('hashchange',()=>load(location.hash.slice(1)));
+(async()=>{[LIST,CAL]=await Promise.all([J('data/stocks/list.json'),J('data/stocks/cal.json')]);
+ $('dl').innerHTML=LIST.map(a=>`<option value="${a[0]} ${a[1]}">`).join('');load(location.hash.slice(1)||'2330')})();
+</script></body></html>
