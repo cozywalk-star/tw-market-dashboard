@@ -1,0 +1,45 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>市場廣度（紫線自製近似）</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#0f1419;color:#e6e6e6}
+header{padding:10px 14px;border-bottom:1px solid #2a2f36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:18px;margin:0}a{color:#58a6ff;text-decoration:none}
+.tag{font-size:11px;background:#6e40c9;border-radius:4px;padding:2px 6px}small{color:#8b949e}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;padding:12px}
+.card{background:#161b22;border-radius:8px;padding:10px}.t{font-size:12px;color:#8b949e}.v{font-size:22px;font-weight:600}
+section{background:#161b22;margin:12px;border-radius:8px;padding:8px}
+button{background:#21262d;color:#ddd;border:1px solid #30363d;border-radius:6px;padding:4px 10px;margin:2px;font-size:13px}button.on{background:#1f6feb}
+.ch{width:100%;height:380px}.dot{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:6px;vertical-align:middle}
+</style></head><body>
+<header><a href="index.html">← 儀表板</a><h1>市場廣度</h1><span class="tag">自製近似</span><small id="asof"></small></header>
+<div class="cards" id="cards"></div>
+<section><div id="mab"></div><div id="rg"></div><div id="c1" class="ch"></div></section>
+<section><div id="c2" class="ch"></div></section>
+<script>
+const R={'1M':21,'3M':63,'6M':126,'1Y':250,'All':1e9};let D,N,rg='1Y';
+const col={red:'#e5534b',yellow:'#d29922',green:'#3fb950'};
+const lt=s=>s>=70?'red':s<=40?'green':'yellow';
+fetch('data/breadth.json').then(r=>r.json()).then(j=>{D=j;N=Object.keys(j.ma)[0];document.getElementById('asof').textContent='資料日 '+j.asof;
+document.getElementById('mab').innerHTML=Object.keys(j.ma).map(k=>`<button data-n="${k}">MA${k}</button>`).join('');
+document.getElementById('rg').innerHTML=Object.keys(R).map(k=>`<button data-r="${k}">${k}</button>`).join('');
+document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>{N=b.dataset.n;draw()});
+document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{rg=b.dataset.r;draw()});draw();radar()});
+const c1=echarts.init(document.getElementById('c1'),'dark'),c2=echarts.init(document.getElementById('c2'),'dark');
+addEventListener('resize',()=>{c1.resize();c2.resize()});
+function draw(){const m=D.ma[N],L=D.dates.length,s=Math.max(m.start,L-R[rg]);
+document.querySelectorAll('[data-n]').forEach(b=>b.classList.toggle('on',b.dataset.n==N));
+document.querySelectorAll('[data-r]').forEach(b=>b.classList.toggle('on',b.dataset.r==rg));
+const a=m.above[L-1],b=m.below[L-1];
+document.getElementById('cards').innerHTML=[[`MA${N} 站上`,a,'#e5534b'],[`MA${N} 跌破`,b,'#3fb950'],['跌破家數 PR',m.pr_below,'#a371f7'],
+['綜合分數',`<span class="dot" style="background:${col[D.light]}"></span>${D.score}`,'']].map(x=>`<div class="card"><div class="t">${x[0]}</div><div class="v" style="color:${x[2]||'#e6e6e6'}">${x[1]}</div></div>`).join('');
+c1.setOption({backgroundColor:'transparent',tooltip:{trigger:'axis'},legend:{top:0},grid:{left:50,right:60,top:30,bottom:50},dataZoom:[{type:'inside'},{type:'slider',height:18}],
+xAxis:{type:'category',data:D.dates.slice(s)},yAxis:[{type:'value',name:'家數'},{type:'value',name:'加權',scale:true,splitLine:{show:false}}],
+series:[{name:'站上',type:'line',showSymbol:false,data:m.above.slice(s),lineStyle:{color:'#e5534b'},itemStyle:{color:'#e5534b'}},
+{name:'跌破',type:'line',showSymbol:false,data:m.below.slice(s),lineStyle:{color:'#a371f7',width:2},itemStyle:{color:'#a371f7'},
+markLine:{symbol:'none',data:[{yAxis:m.bear,name:'偏空',lineStyle:{color:'#3fb950',type:'dashed'},label:{formatter:'偏空 '+m.bear}},{yAxis:m.bull,name:'偏多',lineStyle:{color:'#e5534b',type:'dashed'},label:{formatter:'偏多 '+m.bull}}]}},
+{name:'加權指數',type:'line',yAxisIndex:1,showSymbol:false,data:D.taiex.slice(s),lineStyle:{color:'#d0d7de',width:1},itemStyle:{color:'#d0d7de'}}]},true)}
+function radar(){const k=Object.keys(D.radar),v=k.map(x=>D.radar[x].pr);
+c2.setOption({backgroundColor:'transparent',title:{text:'雷達 PR（0-100）',textStyle:{fontSize:14}},tooltip:{},
+radar:{indicator:k.map(x=>({name:x+' '+D.radar[x].pr,max:100})),radius:'62%'},
+series:[{type:'radar',data:[{value:v,name:'今日',areaStyle:{color:col[D.light]+'55'},lineStyle:{color:col[D.light]},itemStyle:{color:col[D.light]}}]}]})}
+</script></body></html>
