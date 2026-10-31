@@ -1,0 +1,45 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>選股器</title>
+<style>
+body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#0f1419;color:#e6e6e6}
+header{padding:10px 14px;border-bottom:1px solid #2a2f36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:18px;margin:0}a{color:#58a6ff;text-decoration:none}
+.f{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;padding:10px 12px;font-size:13px}
+.f label{background:#161b22;border-radius:6px;padding:6px}input,select{font-size:14px;width:70px;background:#0d1117;color:#e6e6e6;border:1px solid #30363d;border-radius:4px;padding:2px 4px}
+select{width:100%}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:5px 4px;border-bottom:1px solid #22272e;text-align:right;white-space:nowrap}
+th{color:#8b949e;cursor:pointer;position:sticky;top:0;background:#0f1419}td:nth-child(2),th:nth-child(2){text-align:left}.wrap{overflow-x:auto;margin:0 8px}.up{color:#e5534b}.dn{color:#3fb950}#n{padding:0 12px;color:#8b949e;font-size:13px}
+</style></head><body>
+<header><h1>🧪 選股器</h1><a href="./">大盤</a><a href="stock.html">個股</a><a href="portfolio.html">持股風險</a><a href="calendar.html">行事曆</a></header>
+<div class="f">
+<label>產業<select id="ind"><option value="">全部</option></select></label>
+<label>市場<select id="mkt"><option value="">全部</option><option value="twse">上市</option><option value="tpex">上櫃</option></select></label>
+<label>營收連續年增 ≥ <input id="rys" type="number" value=""> 月</label>
+<label>營收 YoY ≥ <input id="ry" type="number"> %</label>
+<label>外資連買 ≥ <input id="fs" type="number"> 天</label>
+<label>投信連買 ≥ <input id="ts" type="number"> 天</label>
+<label>本益比 &lt; 5年中位 <input id="pem" type="checkbox" style="width:auto"></label>
+<label>站上季線 <input id="a60" type="checkbox" style="width:auto"></label>
+<label>站上年線 <input id="a240" type="checkbox" style="width:auto"></label>
+<label>20日均成交值 ≥ <input id="tv" type="number" value="0.5" step="0.1"> 億</label>
+<label>殖利率 ≥ <input id="dy" type="number"> %</label>
+<label>只看自選 ⭐ <input id="wl" type="checkbox" style="width:auto"></label>
+</div><div id="n"></div>
+<div class="wrap"><table id="t"></table></div>
+<script>
+const $=id=>document.getElementById(id);let S,sortK='tv20',sortD=-1;
+const WL=()=>JSON.parse(localStorage.getItem('twmd_watch_v1')||'[]');
+const COLS=[['sid','代號'],['name','名稱'],['c','收盤'],['chg','漲跌%'],['a60','季線%'],['a240','年線%'],['rsi','RSI'],['tv20','均值億'],['fs','外資連'],['ts','投信連'],['ry','營收YoY'],['rys','連增月'],['pe','PE'],['pem','PE中位'],['dy','殖利率'],['ind','產業']];
+function run(){const ix=Object.fromEntries(S.f.map((k,i)=>[k,i])),v=id=>$(id).value===''?null:+$(id).value,wl=WL();
+ let R=S.rows.filter(r=>{const g=k=>r[ix[k]];
+  if($('ind').value&&g('ind')!==$('ind').value)return false;if($('mkt').value&&g('mkt')!==$('mkt').value)return false;
+  if(v('rys')!=null&&!(g('rys')>=v('rys')))return false;if(v('ry')!=null&&!(g('ry')>=v('ry')))return false;
+  if(v('fs')!=null&&!(g('fs')>=v('fs')))return false;if(v('ts')!=null&&!(g('ts')>=v('ts')))return false;
+  if($('pem').checked&&!(g('pe')&&g('pem')&&g('pe')<g('pem')))return false;if($('a60').checked&&!(g('a60')>0))return false;if($('a240').checked&&!(g('a240')>0))return false;
+  if(v('tv')!=null&&!(g('tv20')>=v('tv')))return false;if(v('dy')!=null&&!(g('dy')>=v('dy')))return false;if($('wl').checked&&!wl.includes(g('sid')))return false;return true});
+ R.sort((a,b)=>{const x=a[ix[sortK]],y=b[ix[sortK]];return (x==null)-(y==null)||(x<y?-1:x>y?1:0)*sortD});
+ $('n').textContent=`${R.length} 檔｜資料 ${S.asof}`;
+ $('t').innerHTML='<tr>'+COLS.map(([k,t])=>`<th data-k="${k}">${t}${k===sortK?(sortD>0?'▲':'▼'):''}</th>`).join('')+'</tr>'+R.slice(0,300).map(r=>'<tr>'+COLS.map(([k])=>{let x=r[ix[k]];
+  if(k==='sid')return `<td><a href="stock.html#${x}">${wl.includes(x)?'⭐':''}${x}</a></td>`;if(k==='chg')return `<td class="${x>=0?'up':'dn'}">${x??'-'}</td>`;return `<td>${x??'-'}</td>`}).join('')+'</tr>').join('')}
+$('t').onclick=e=>{const k=e.target.dataset.k;if(!k)return;sortD=k===sortK?-sortD:-1;sortK=k;run()};
+document.querySelectorAll('.f input,.f select').forEach(e=>e.addEventListener('input',run));
+fetch('data/stocks/snap.json').then(r=>r.json()).then(d=>{S=d;const ix=S.f.indexOf('ind');[...new Set(S.rows.map(r=>r[ix]).filter(Boolean))].sort().forEach(i=>$('ind').insertAdjacentHTML('beforeend',`<option>${i}</option>`));run()});
+</script></body></html>

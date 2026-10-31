@@ -1,0 +1,14 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>行事曆</title>
+<style>body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:#0f1419;color:#e6e6e6}
+header{padding:10px 14px;border-bottom:1px solid #2a2f36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:18px;margin:0}a{color:#58a6ff;text-decoration:none}
+table{width:calc(100% - 16px);margin:8px;border-collapse:collapse;font-size:14px}td{padding:6px 4px;border-bottom:1px solid #22272e}.d{color:#8b949e;white-space:nowrap}label{margin:10px 14px;display:block;font-size:13px}</style></head><body>
+<header><h1>📅 行事曆</h1><a href="./">大盤</a><a href="stock.html">個股</a><a href="screener.html">選股</a></header>
+<label><input type="checkbox" id="wl"> 只看自選 ⭐</label><table id="t"></table>
+<script>
+const WL=JSON.parse(localStorage.getItem('twmd_watch_v1')||'[]');let E=[],N={};
+function run(){const only=document.getElementById('wl').checked;
+ document.getElementById('t').innerHTML=E.filter(e=>!only||e[1]==='*'||WL.includes(e[1])).map(([d,s,k,i])=>`<tr><td class="d">${d.slice(5)}</td><td>${s==='*'?'全市場':`<a href="stock.html#${s}">${WL.includes(s)?'⭐':''}${s} ${N[s]||''}</a>`}</td><td>${k}</td><td>${i}</td></tr>`).join('')}
+document.getElementById('wl').onchange=run;
+Promise.all([fetch('data/market/calendar.json').then(r=>r.json()),fetch('data/stocks/list.json').then(r=>r.json())]).then(([e,l])=>{E=e;l.forEach(a=>N[a[0]]=a[1]);run()});
+</script></body></html>

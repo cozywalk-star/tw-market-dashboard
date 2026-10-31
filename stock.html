@@ -15,17 +15,16 @@ table{width:100%;border-collapse:collapse;font-size:13px}td{padding:5px 4px;bord
 .ch{width:100%;height:300px}button{background:#21262d;color:#ddd;border:1px solid #30363d;border-radius:6px;padding:4px 10px;margin:2px;font-size:13px}button.on{background:#1f6feb}
 .note{font-size:12px;color:#8b949e;margin:8px 12px}#msg{color:#e5534b;margin:8px 12px}details summary{cursor:pointer;color:#8b949e;font-size:13px;margin:6px 0}
 </style></head><body>
-<header><h1>🔎 個股健檢</h1><input id="q" list="dl" placeholder="代號或名稱，例如 2330 或 台積電" autocomplete="off"><datalist id="dl"></datalist><a href="./">← 大盤儀表板</a></header>
+<header><h1>🔎 個股健檢</h1><input id="q" list="dl" placeholder="代號或名稱，例如 2330 或 台積電" autocomplete="off"><datalist id="dl"></datalist><button id="star">☆ 自選</button><a href="./">大盤</a><a href="screener.html">選股</a><a href="portfolio.html">持股風險</a><a href="calendar.html">行事曆</a></header>
 <div id="msg"></div>
 <div class="top" id="top"></div>
 <section><h2>📈 技術面</h2><div class="sum" id="s1"></div><table id="t1"></table>
  <div id="rng" style="margin-top:8px"></div><div id="k" class="ch" style="height:430px"></div></section>
 <section><h2>🧮 籌碼面</h2><div class="sum" id="s2"></div><table id="t2"></table>
- <details><summary>圖表：法人買賣超・融資融券・外資持股</summary><div id="inst" class="ch"></div><div id="mg" class="ch" style="height:260px"></div></details></section>
+ <details><summary>圖表</summary><div id="inst" class="ch"></div><div id="mg" class="ch" style="height:260px"></div></details></section>
 <section><h2>🏭 基本面</h2><div class="sum" id="s3"></div><table id="t3"></table>
- <details><summary>圖表：月營收・季 EPS/利潤率・股利</summary><div id="rev" class="ch"></div><div id="qq" class="ch"></div><table id="divt"></table></details></section>
-<p class="note">⚠️ 本頁只呈現公開資料與固定門檻的客觀檢核（✅ 符合／⚠️ 留意／❌ 不符），不是買賣建議。資料可能有延遲或缺漏，下單前請自行查證。<br>
-價格為未還原收盤價（2019 起）；法人、外資持股、融券為公開資料續接期間（2026 起）；本益比/淨值比/殖利率歷史區間以收盤價與近四季 EPS、每股淨值、近一年現金股利自行推算。集保大戶比例每週更新，從上線後逐週累積。</p>
+ <details><summary>圖表・股利</summary><div id="rev" class="ch"></div><div id="qq" class="ch"></div><table id="divt"></table></details></section>
+<p class="note">僅供參考，非投資建議。</p>
 <script>
 let LIST=[],CAL=[],charts=[];
 const $=id=>document.getElementById(id), J=u=>fetch(u).then(r=>r.ok?r.json():null).catch(()=>null);
@@ -39,7 +38,7 @@ function streak(a){let n=0,sgn=0;for(let i=a.length-1;i>=0;i--){const x=a[i];if(
 function pct(arr,v){const a=arr.filter(x=>x!=null&&isFinite(x)).sort((x,y)=>x-y);if(!a.length||v==null)return null;return 100*a.filter(x=>x<=v).length/a.length}
 function row(t,v,fl){return `<tr><td>${t}</td><td>${fl||''} ${v}</td></tr>`}
 function summary(items){const c={[OK]:0,[WN]:0,[NO]:0};items.forEach(x=>{if(x[2])c[x[2]]++});
- return `${OK}×${c[OK]}　${WN}×${c[WN]}　${NO}×${c[NO]}｜`+items.filter(x=>x[3]).map(x=>`${x[2]}${x[3]}`).join('、')}
+ return `${OK}${c[OK]} ${WN}${c[WN]} ${NO}${c[NO]}｜`+items.filter(x=>x[3]).map(x=>`${x[2]}${x[3]}`).join('、')}
 function mk(id,opt){let c=echarts.getInstanceByDom($(id));if(c)c.dispose();c=echarts.init($(id),'dark');
  c.setOption(Object.assign({backgroundColor:'transparent',tooltip:{trigger:'axis'},legend:{top:0,textStyle:{fontSize:11}}},opt));charts.push(c);return c}
 window.addEventListener('resize',()=>charts.forEach(c=>c.resize()));
@@ -48,7 +47,10 @@ const RG=[['3月',66],['6月',130],['1年',250],['3年',750],['全部',0]];
 $('rng').innerHTML=RG.map(([t,n])=>`<button data-n="${n}">${t}</button>`).join('');
 $('rng').onclick=e=>{const n=e.target.dataset.n;if(n===undefined)return;const c=echarts.getInstanceByDom($('k'));const len=c.getOption().xAxis[0].data.length;
  c.dispatchAction({type:'dataZoom',startValue:+n?Math.max(0,len-n):0,endValue:len-1});document.querySelectorAll('#rng button').forEach(b=>b.classList.toggle('on',b.dataset.n==n))};
-async function load(sid){
+const WK='twmd_watch_v1',WL=()=>JSON.parse(localStorage.getItem(WK)||'[]');let CUR='';
+function star(){$('star').textContent=WL().includes(CUR)?'⭐ 自選':'☆ 自選'}
+document.addEventListener('DOMContentLoaded',()=>{});
+async function load(sid){CUR=sid;setTimeout(star,0);
  $('msg').textContent='';charts.forEach(c=>c.dispose());charts=[];
  const [h,r,F]=await Promise.all([J(`data/stocks/h/${sid}.json`),J(`data/stocks/r/${sid}.json`),J(`data/stocks/f/${sid}.json`)]);
  if(!r){$('msg').textContent=`找不到 ${sid}（收錄 2026 年仍有交易的上市櫃證券）`;return}
@@ -62,7 +64,7 @@ async function load(sid){
  $('top').innerHTML=`<div class="nm">${sid} ${name} <span class="muted">${fd.industry||''}｜${{twse:'上市',tpex:'上櫃'}[fd.market]||''}</span></div>
   <div><span class="px ${chg>=0?'up':'dn'}">${f(C[n])}</span> <span class="${chg>=0?'up':'dn'}">${sg(chg,2,'%')}</span> <span class="muted">${x[n]}</span></div>
   <div class="muted">市值 ${cap?f(cap,0)+' 億':'-'}｜20日均成交值 ${f(avgTV/1e8,2)} 億｜成交量 ${f(D.v[n],0)} 張</div>
-  ${avgTV<1e7?`<div class="warn">⚠️ 流動性低：20日均成交值不到 1,000 萬，進出容易滑價</div>`:''}`;
+  ${avgTV<1e7?`<div class="warn">⚠️ 流動性低</div>`:''}`;
  // ---- 技術面
  const m20=ma(C,20),m60=ma(C,60),m240=ma(C,240);
  const lr=C.map((v,i)=>i?Math.log(v/C[i-1]):null).slice(-20).filter(v=>v!=null);const mu=lr.reduce((a,b)=>a+b,0)/lr.length;
@@ -117,7 +119,7 @@ async function load(sid){
   const gm=fd.gm[k],gmp=k>=4?fd.gm[k-4]:null,om=fd.om[k],omp=k>=4?fd.om[k-4]:null;
   B.push(['毛利率／營益率（vs 去年同季）',`${f(gm,1)}% (${sg(gm-gmp,1,'pt')})／${f(om,1)}% (${sg(om-omp,1,'pt')})`,om!=null&&omp!=null?(om>=omp?OK:WN):null,om!=null&&omp!=null&&om<omp?'營益率下滑':null]);
   const roe=fd.roe[k];B.push(['ROE（近四季）',f(roe,1)+'%',roe==null?null:roe>=10?OK:roe>0?WN:NO,roe!=null&&roe<10?'ROE偏低':null]);
-  const dr=fd.debt[k];B.push(['負債比',f(dr,1)+'%',dr==null?null:dr>60?WN:OK,dr>60?'負債比高(金融業例外)':null]);
+  const dr=fd.debt[k];B.push(['負債比',f(dr,1)+'%',dr==null?null:dr>60?WN:OK,dr>60?'負債比高':null]);
   const o4=sumLast(fd.ocf,4),n4=sumLast(fd.ni,4),cr=n4>0?o4/n4:null;
   B.push(['營業現金流／淨利（近四季）',`${f(o4,1)} 億／${f(n4,1)} 億`+(cr!=null?`（${f(cr,2)} 倍）`:''),cr==null?null:cr>=0.8?OK:WN,cr!=null&&cr<0.8?'現金流不及獲利':null])}
  // 估值歷史：以收盤/近四季EPS、收盤/每股淨值、近一年現金股利 推算
@@ -145,6 +147,7 @@ async function load(sid){
 }
 function pick(v){const s=(v||'').trim().split(/\s+/)[0];const hit=LIST.find(a=>a[0]===s)||LIST.find(a=>a[1]===s)||LIST.find(a=>a[1].includes(s));if(hit){location.hash=hit[0];$('q').value=''}else if(s)$('msg').textContent='找不到：'+s}
 $('q').addEventListener('change',e=>pick(e.target.value));$('q').addEventListener('keydown',e=>{if(e.key==='Enter')pick(e.target.value)});
+$('star').onclick=()=>{let w=WL();w=w.includes(CUR)?w.filter(x=>x!==CUR):[...w,CUR];localStorage.setItem(WK,JSON.stringify(w));star()};
 window.addEventListener('hashchange',()=>load(location.hash.slice(1)));
 (async()=>{[LIST,CAL]=await Promise.all([J('data/stocks/list.json'),J('data/stocks/cal.json')]);
  $('dl').innerHTML=LIST.map(a=>`<option value="${a[0]} ${a[1]}">`).join('');load(location.hash.slice(1)||'2330')})();

@@ -12,8 +12,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 4px;b
 th{color:#8b949e;font-weight:normal}.scroll{overflow-x:auto}.sum{font-size:14px;line-height:1.7}.muted{color:#8b949e;font-size:12px}
 .privacy{background:#0d2a17;color:#7ee2a8;border-radius:8px;padding:8px 10px;font-size:13px;margin:12px}.ch{width:100%;height:340px}
 </style></head><body>
-<header><h1>🧺 持股風險評價</h1><a href="./">大盤</a><a href="stock.html">個股健檢</a></header>
-<div class="privacy">🔒 持股只存在你這台裝置的瀏覽器（localStorage），所有計算都在瀏覽器內完成，不會上傳到任何伺服器。換裝置請用「匯出／匯入」。</div>
+<header><h1>🧺 持股風險</h1><a href="./">大盤</a><a href="stock.html">個股</a><a href="screener.html">選股</a><a href="calendar.html">行事曆</a></header>
+<div class="privacy">🔒 僅存於本機瀏覽器，不上傳</div>
 <section><h2>輸入持股</h2>
 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
 <input id="code" list="dl" placeholder="代號/名稱" style="width:150px"><datalist id="dl"></datalist>
@@ -25,7 +25,7 @@ th{color:#8b949e;font-weight:normal}.scroll{overflow-x:auto}.sum{font-size:14px;
 <div style="margin-top:8px"><button class="pri" id="run">計算風險</button><button id="exp">匯出</button><button id="impb">匯入</button><input type="file" id="imp" accept=".json" style="display:none"><button id="clr">清除全部</button></div>
 </section>
 <div id="out"></div>
-<p class="muted" style="margin:12px">⚠️ 僅供資訊參考，不是投資建議。以目前持股比例回推歷史（價格為未還原收盤價，除權息日會被當成下跌，波動與回撤略偏保守）。VaR 為歷史模擬法；壓力測試以 β 推估，並在資料涵蓋時以實際歷史重播。</p>
+<p class="muted" style="margin:12px">僅供參考，非投資建議。</p>
 <script>
 const K='twmd_portfolio_v1',$=id=>document.getElementById(id),J=u=>fetch(u).then(r=>r.ok?r.json():null).catch(()=>null);
 const f=(v,d=2)=>v==null||!isFinite(v)?'-':(+v).toLocaleString('zh-TW',{maximumFractionDigits:d});
@@ -110,7 +110,7 @@ async function run(){
  html+=`<section><h2>相關係數（1年日報酬）</h2><div id="corr" class="ch" style="height:${Math.max(260,40*P.length+80)}px"></div></section>`;
  html+=`<section><h2>壓力測試</h2><table><tr><th>情境</th><th>大盤跌幅</th><th>β 推估</th><th>歷史重播</th></tr>
  ${ST.map(s=>`<tr><td>${s.t}</td><td>${pc(s.dd,0)}</td><td>${pc(s.est)}（${f(s.est*tot,0)} 元）</td><td>${s.rep?`${pc(s.rep.pf)}（同期大盤 ${pc(s.rep.ix)}）`:'<span class="muted">資料不足</span>'}</td></tr>`).join('')}</table>
- <p class="muted">β 推估＝β×大盤跌幅；歷史重播需所有持股在該期間都有價格（個股資料自 2019 年起，2008 無法重播）。</p></section>`;
+ </section>`;
  html+=`<section><h2>目前組合的歷史淨值（回推）</h2><div id="nav" class="ch"></div></section>`;
  $('out').innerHTML=html;
  mk($('secc'),{tooltip:{},series:[{type:'pie',radius:['35%','65%'],data:secs.map(([k,v])=>({name:k,value:+(v*100).toFixed(1)})),label:{formatter:'{b} {c}%',color:'#ccc'}}]});
